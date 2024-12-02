@@ -20,7 +20,7 @@ let ordersCollection;
   try {
     await client.connect();
     console.log('Connected to MongoDB Atlas');
-    const database = client.db('webstore'); //  Database name
+    const database = client.db('Webstore'); //  Database name
     productsCollection = database.collection('products'); //  collection name
     ordersCollection = database.collection('orders'); //  collection name
   } catch (err) {
