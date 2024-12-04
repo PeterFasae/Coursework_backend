@@ -92,14 +92,14 @@ app.post('/api/orders', async (req, res) => {
           throw new Error(`Product with ID ${item.id} not found`);
         }
 
-        if (product.spaces < item.quantity) {
+        if (product.slots < item.quantity) {
           throw new Error(`Not enough spaces for product ${item.subject}`);
         }
 
         // Deduct quantity from available spaces
         await productsCollection.updateOne(
           { id: item.id },
-          { $inc: { spaces: -item.quantity } },
+          { $inc: { slots: -item.quantity } },
           { session }
         );
       }
