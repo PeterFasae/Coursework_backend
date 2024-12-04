@@ -34,6 +34,8 @@ app.use(express.json());
 app.use(morgan("short"));
 
 const staticMiddleware = express.static(path.join(__dirname, '../coursework/dist'));
+app.use('/coursework', staticMiddleware);
+
 
 // Use a middleware to log errors if static files cannot be served
 app.use((req, res, next) => {
@@ -47,6 +49,26 @@ app.use((req, res, next) => {
   });
 });
 
+//inserting customer orders into the database
+// app.post('/api/orders', async (req, res) => {
+//   try {
+//     const order = req.body;
+//     console.log('Received order:', order); // Log the incoming order for debugging
+
+//     if (!order.customer || !order.items || !order.total) {
+//       console.error('Invalid order data:', order);
+//       return res.status(400).json({ success: false, message: 'Invalid order data' });
+//     }
+
+
+//     ordersCollection.insertOne(order);
+//     res.json({ success: true, message: 'Order placed successfully' });
+//   } catch (error) {
+//     console.error('Error saving order:', error);
+//     res.status(500).json({ success: false, message: 'Failed to place order' });
+//   }
+// });
+
 app.post('/api/orders', async (req, res) => {
   try {
     const order = req.body;
@@ -57,14 +79,50 @@ app.post('/api/orders', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid order data' });
     }
 
+    // Start a transaction
+    const session = client.startSession();
+    session.startTransaction();
 
-    ordersCollection.insertOne(order);
-    res.json({ success: true, message: 'Order placed successfully' });
+    try {
+      // Update inventory for each item in the order
+      for (const item of order.items) {
+        const product = await productsCollection.findOne({ id: item.id }, { session });
+
+        if (!product) {
+          throw new Error(`Product with ID ${item.id} not found`);
+        }
+
+        if (product.spaces < item.quantity) {
+          throw new Error(`Not enough spaces for product ${item.subject}`);
+        }
+
+        // Deduct quantity from available spaces
+        await productsCollection.updateOne(
+          { id: item.id },
+          { $inc: { spaces: -item.quantity } },
+          { session }
+        );
+      }
+
+      // Save the order to the orders collection
+      await ordersCollection.insertOne(order, { session });
+
+      // Commit the transaction
+      await session.commitTransaction();
+      res.json({ success: true, message: 'Order placed successfully' });
+    } catch (error) {
+      await session.abortTransaction(); // Rollback changes if any error occurs
+      throw error;
+    } finally {
+      session.endSession();
+    }
   } catch (error) {
-    console.error('Error saving order:', error);
-    res.status(500).json({ success: false, message: 'Failed to place order' });
+    console.error('Error processing order:', error);
+    res.status(500).json({ success: false, message: error.message || 'Failed to place order' });
   }
 });
+
+//updating products in the database
 
 app.put('/api/products/:id', async (req, res) => {
   try {
